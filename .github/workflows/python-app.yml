@@ -38,11 +38,13 @@ jobs:
       - name: unittest
         id: unittest
         continue-on-error: true
-        run: |
-          uv run pytest > pytest.log 2>&1
-          code=$?
-          cat pytest.log
-          exit $code
+        run: pytest --html=report.html
+      - name: 上传报告
+        if: failure() # 仅在失败时上传
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: report.html
 
       - name: lint
         id: lint
