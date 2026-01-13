@@ -6,24 +6,133 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Set up Python 3.12
+      - name: Set up Python 3.13
         uses: actions/setup-python@v4
         with:
-          python-version: "3.12"
+          python-version: "3.13"
       - uses: astral-sh/setup-uv@v1
         with:
           version: "latest"
       - name: Install dependencies
-        run: uv sync -p 3.12
+        run: uv sync -p 3.13
+
       - name: Mypy
-        run: uv run mypy .
+        id: mypy
+        continue-on-error: true
+        run: |
+          uv run mypy . > mypy.log 2>&1
+          code=$?
+          cat mypy.log
+          exit $code
+
       - name: unittest
-        run: uv run pytest
+        id: unittest
+        continue-on-error: true
+        run: pytest --html=report.html
+      - name: 上传报告
+        if: failure() # 仅在失败时上传
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: report.html
+
       - name: lint
-        run: uv run ruff check .
+        id: lint
+        continue-on-error: true
+        run: |
+          uv run ruff check . > ruff.log 2>&1
+          code=$?
+          cat ruff.log
+          exit $code
+
+      - name: Comment PR
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        env:
+          MYPY_OUTCOME: ${{ steps.mypy.outcome }}
+          UNITTEST_OUTCOME: ${{ steps.unittest.outcome }}
+          LINT_OUTCOME: ${{ steps.lint.outcome }}
+        with:
+          script: |
+            const fs = require('fs');
+
+            const readLog = (filename) => {
+              try {
+                let content = fs.readFileSync(filename, 'utf8');
+                if (content.length > 5000) {
+                  content = content.slice(0, 5000) + '\n... (truncated)';
+                }
+                return content;
+              } catch (e) {
+                return 'No log available (Step might have been skipped).';
+              }
+            };
+
+            const mypyLog = readLog('mypy.log');
+            const pytestLog = readLog('pytest.log');
+            const ruffLog = readLog('ruff.log');
+
+            const outcomes = {
+              mypy: process.env.MYPY_OUTCOME === 'success',
+              unittest: process.env.UNITTEST_OUTCOME === 'success',
+              lint: process.env.LINT_OUTCOME === 'success'
+            };
+
+            const icon = (status) => status ? '✅' : '❌';
+
+            const body = `### 🤖 CI Results
+
+            | Check | Status |
+            |---|---|
+            | **Mypy** | ${icon(outcomes.mypy)} ${outcomes.mypy ? 'Passed' : 'Failed'} |
+            | **Unittest** | ${icon(outcomes.unittest)} ${outcomes.unittest ? 'Passed' : 'Failed'} |
+            | **Lint** | ${icon(outcomes.lint)} ${outcomes.lint ? 'Passed' : 'Failed'} |
+
+            <details><summary><b>📝 Mypy Output</b></summary>
+            
+            \`\`\`
+            ${mypyLog}
+            \`\`\`
+            </details>
+
+            <details><summary><b>🧪 Unittest Output</b></summary>
+            
+            \`\`\`
+            ${pytestLog}
+            \`\`\`
+            </details>
+
+            <details><summary><b>🧹 Lint Output</b></summary>
+            
+            \`\`\`
+            ${ruffLog}
+            \`\`\`
+            </details>
+            `;
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+      - name: Check Failure
+        if: always()
+        run: |
+          if [ "${{ steps.mypy.outcome }}" == "failure" ] || \
+             [ "${{ steps.unittest.outcome }}" == "failure" ] || \
+             [ "${{ steps.lint.outcome }}" == "failure" ]; then
+            echo "One or more checks failed."
+            exit 1
+          fi
