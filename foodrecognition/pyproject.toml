@@ -1,0 +1,13 @@
+[project]
+name = "foodrecognition"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "shared",
+]
+
+[project.scripts]
+food-app = "main:main" # 假设 main.py 在 src 下且有 main 函数
+

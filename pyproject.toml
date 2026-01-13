@@ -1,0 +1,52 @@
+[project]
+name = "llm-monorepo"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "pytest>=9.0.2",
+]
+
+[tool.uv.sources]
+shared = { workspace = true }
+foodrecognition = { workspace = true }
+
+[tool.uv.workspace]
+members = ["shared", "foodrecognition"]
+
+[tool.uv]
+managed = true
+
+
+# 代码风格检查目录
+[tool.ruff]
+# 忽略指定目录
+exclude = ["api", "app/service/aibot/api", "pkg/third_party"]
+
+[tool.mypy]
+# 配置 MyPy 类型检查
+python_version = "3.11"
+# Notice：1. 不主动扫描该目录 2. 但如果代码 import 了它，进去检查并报错
+exclude = []
+strict = false
+warn_return_any = true
+warn_unused_configs = true
+show_error_codes = true
+# 保证 exclude 会生效
+# 若其他模块有导入 exclude 的代码，需要添加以下两行来确保会忽略 check
+follow_imports = "silent"
+# 确保 stub 文件（.pyi ）也会被忽略
+follow_imports_for_stubs = true
+
+[tool.pytest.ini_options]
+testpaths = ["shared/tests", "foodrecognition/tests"]
+cache_dir = ".cache/pytest"
+pythonpath = [".", "scripts"]  # 辅助 IDE 识别
+addopts = "-ra -q --import-mode=importlib"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.1",
+    "ruff>=0.14.11",
+]
